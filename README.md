@@ -1,4 +1,4 @@
-Egg_Production
+Mackerel Egg Survey Egg Production Estimation
 ==============
 
-MEGS
+Contains code to produce Egg production estimates from the Mackerel Egg Survey
