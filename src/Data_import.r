@@ -44,12 +44,12 @@ opts_chunk$set(echo=FALSE,results="hide",messages=FALSE,fig.path="mdfigures/")
 # House cleaning
 rm(list = ls(all.names=TRUE));  graphics.off()
 start.time <- proc.time()[3]; options(stringsAsFactors=FALSE)
-cat(sprintf("\n%s\n","MEGS Quality Assurance"))
+cat(sprintf("\n%s\n","MEGS Data Import"))
 cat(sprintf("Analysis performed %s\n\n",date()))
 
-log.msg <- function(fmt,...) {cat(sprintf(fmt,...));flush.console();return(invisible(NULL))}
+log.msg <- function(fmt,...) {cat(sprintf(fmt,...));flush.console();
+                              return(invisible(NULL))}
 library(sp)
-library(xlsx)
 library(tools)
 
 #Start recording from here
@@ -59,20 +59,26 @@ opts_chunk$set(results="markup",echo=FALSE)
 #  Load data
 #/* ========================================================================*/
 #Identify input data source
-fname <- dir("data",pattern=".*xlsx$",full.names=TRUE)
+fname <- dir("data",pattern=".*csv$",full.names=TRUE)
 if(length(fname)!=1) {
-  stop("Problem with data source definition. Please ensure that the data directory contain ",
-       "one and only one .xlsx data file")
+  stop("Problem with data source definition. Please ensure that the data directory ",
+       "contains one and only one .csv data file")
 }
 
 # File details
+log.msg("Calculating MD5 Checksum...\n")
 f.details <- data.frame(filesize=file.info(fname)$size,
              "last modification time"=file.info(fname)$mtime,
              "md5 Checksum"=md5sum(fname))
 
-#Read in data directly from the spreadsheet
+#Read in data from the CSV.
 log.msg("Loading data...")
-dat <- read.xlsx(fname,"Data",colClasses="character") #Read all as character
+dat <- read.csv2(fname,colClasses="character") #Read all as character
+
+#Set rownames. We use the rownumbers from the csv, assuming the header to
+#be row 1 and the data starting on row 2 - hopefully these
+#should help find the problem quickly
+rownames(dat) <- seq(nrow(dat))+1
 
 #Strip out padding rows, defined here as all elements
 #being NA
@@ -85,7 +91,7 @@ dat <- subset(dat,!mt.row)
 attr(dat,"source.details") <- f.details
 
 #Save data
-save(dat,file="objects/EP_data.RData")
+save(dat,file="objects/EP_data_raw.RData")
 
 #/* ========================================================================*/
 #   Complete
@@ -108,7 +114,8 @@ log.msg("\nAnalysis complete in %.1fs at %s.\n",proc.time()[3]-start.time,date()
 #       > library(markdown)
 #       > options("markdown.HTML.stylesheet"="/usr/lib/rstudio/resources/markdown.css")
 #       > spin("R_template.r")
-#       > markdownToHTML("R_template.md","R_template.html",stylesheet="/usr/lib/rstudio/resources/markdown.css"
+#       > markdownToHTML("R_template.md","R_template.html",
+#               stylesheet="/usr/lib/rstudio/resources/markdown.css"
 #     if you're really keen. Alternatively, open the corresponding Rmd and compile
 #     it using Rstudio instead.
 #   - Add markdown directly using #'

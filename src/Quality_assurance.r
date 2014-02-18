@@ -49,23 +49,23 @@ cat(sprintf("Analysis performed %s\n\n",date()))
 log.msg <- function(fmt,...) {cat(sprintf(fmt,...));
                               flush.console();return(invisible(NULL))}
 library(sp)
-library(xlsx)
+library(lattice)
 library(tools)
 library(reshape)
 library(maps);library(mapdata);library(maptools)
 
 #Start recording from here
-opts_chunk$set(results="markup",echo=FALSE)
+opts_chunk$set(results="markup",echo=FALSE,messages=FALSE)
 #+results="asis"
 cat(sprintf("Analysis performed %s\n\n",date()))
-
+options("width"=120)
 #/* ========================================================================*/
 #'# Introduction
 #'  This work documents the results of quality assurance checks on the the
 #'  MEGS database. The details of the analysed file are as follows:
 #/* ========================================================================*/
 #Load data file
-load("objects//EP_data.RData")
+load("objects//EP_data_raw.RData")
 
 # File details
 f.details <- attr(dat,"source.details")
@@ -91,6 +91,9 @@ colnames(dat)
 #' a quick overview and to check the quality of data entry, particularly for
 #' the text fields contained
 #/* ========================================================================*/
+#'#### Data by Year
+print(table(Year=dat$Year),zero.print=".")
+
 #'#### Gear by Year
 print(table(Gear=dat$Gear,Year=dat$Year),zero.print=".")
 
@@ -103,8 +106,10 @@ print(table(Country=dat$Country,Year=dat$Year),zero.print=".")
 #'#### Period by Year
 print(table(Year=dat$Year,Period=dat$Period),zero.print=".")
 
-#'#### Gear used by each vessel in each year
-print(table(Vessel=dat$Vessel,Gear=dat$Gear,Year=dat$Year),zero.print=".")
+#'#### Year - Country - Vessel - Gear table
+prt.dat <- melt(table(Year=dat$Year,Country=dat$Country,Vessel=dat$Vessel,Gear=dat$Gear))
+prt.dat <- prt.dat[order(prt.dat[,1:4]),]
+print(subset(prt.dat,value!=0),row.names=FALSE)
 
 #/* ========================================================================*/
 #'# Data Parsing and Missing Values
@@ -118,20 +123,21 @@ print(table(Vessel=dat$Vessel,Gear=dat$Gear,Year=dat$Year),zero.print=".")
 #/* ========================================================================*/
 #First, expect that we have all the column names that we expect to retain
 #as characters
-allowed.char.cols <- c("UniqueID","Component","Country","Vessel","Gear","E.W",
-                       "half_rect","Notes")
-
+allowed.char.cols <- c("Unique.ID","Component","Country","Vessel","Gear","E.W",
+                       "HALFST")
 if(any(!allowed.char.cols %in% colnames(dat))) {
   stop("Expected character columns are missing")
 }
 
 #Now convert the other columns to numerics
 other.cols <- colnames(dat)[!colnames(dat) %in% allowed.char.cols]
-parsed.cols <- suppressWarnings(lapply(dat[other.cols],as.numeric))
+parsed.cols <- lapply(dat[other.cols],function(x) {
+                  x.clean <- gsub(",",".",x)
+                  return( suppressWarnings(as.numeric(x.clean)))})
 
 #Estimate the parsing failures vs the missing values
 dat.missing <- colSums(sapply(dat,is.na))
-parsed.failures <- colSums(sapply(dat,is.na))
+parsed.failures <- colSums(sapply(parsed.cols,is.na))
 parsing.sum <- merge(melt(dat.missing),melt(parsed.failures),
                      by="row.names",sort=FALSE,all=TRUE)
 colnames(parsing.sum) <- c("col.name","missing.in.src",
@@ -140,81 +146,127 @@ parsing.sum$parse.errors <- parsing.sum$missing.after.parsing -
                               parsing.sum$missing.in.src
 
 #only print the values where there is a non zero
-par.sum.print <- subset(parsing.sum,
-                        rowSums(sapply(parsing.sum[2:4],function(x)x!=0))!=0)
+par.sum.print <- subset(parsing.sum[,-3],
+                        rowSums(sapply(parsing.sum[2:3],function(x)x!=0))!=0)
 print(par.sum.print)
 
 #Add parsed values back into the data
+dat.raw <- dat
 dat[names(parsed.cols)] <- parsed.cols
 
 #/* ========================================================================*/
 #'# Error detection Algorithms
 #' The following tests check for specific types of errors that may, or may not
-#' occur in the database
+#' occur in the database. Where an error is detected, some of the key details
+#' of the database row that contain that value are given, unless there are more
+#' than 250 such values. Note that the values of the columns of concern are
+#' pre-parsing, which generally makes it easier to interpret.
 #/* ========================================================================*/
 #First, setup a display function
-disp.err <- function(d,colnames) {
-  if(nrow(d) ==0) {
+disp.err <- function(test,colnames,from=dat.raw) {
+  idxs <- which(test)
+  if(length(idxs) ==0) {
     cat("No errors detected\n") 
+  } else if(length(idxs)>250) {
+    cat(sprintf("Errors detected in %i rows. \n",length(idxs)))
+    #print(d$Unique.ID)
   } else {
-    print(d[,c("UniqueID","Country","Vessel",colnames)])
+    print(from[idxs,c("Unique.ID","Year","Country","Vessel",colnames)],
+          row.names=TRUE)
   }
 }
 
+#'#### Raising factor (MacFactor) Missing / Failed to Parse
+disp.err(is.na(dat$MacFactor),c("MacFactor"))
+
 #'#### Raising factor is less than 1
-disp.err(subset(dat,MacFactor<1),"MacFactor")
+disp.err(dat$MacFactor<1,"MacFactor")
 dat$raising.factor <- ifelse(is.na(dat$MacFactor),1,
                              dat$MacFactor) #If missing, set to 1
 dat$raising.factor <- ifelse(dat$raising.factor<1,    #If less than 1, its been inverted
                              1/dat$raising.factor,dat$raising.factor)
 
-#'#### Both Mac1 and Stage1 data are missing
-disp.err(subset(dat,is.na(Mac1) & is.na(MacStage1)), 
+
+#'#### Sampling depth (Sdepth) Missing / Failed to Parse
+disp.err(is.na(dat$Sdepth),c("Sdepth"))
+
+#'####  Mac1 missing / failed to parse
+disp.err(is.na(dat$Mac1) , "Mac1")
+
+#'#### Both Mac1 and MacStage1 data are missing
+#'If two out of Mac1, MacStage1 and MacFactor are present, it is possible to calculate
+#'the missing value. But if there are two missing, there is a problem
+disp.err(is.na(dat$Mac1) & is.na(dat$MacStage1), 
          c("Mac1","MacStage1"))
 
 #'#### Temperature at both 5m and 20m missing
-disp.err(subset(dat,is.na(Temp5m)&is.na(Temp20m)),
-         c("Temp5m","Temp20m"))
+disp.err(is.na(dat$TempSur.5m.)&is.na(dat$Temp20m),
+         c("TempSur.5m.","Temp20m"))
 
-#'#### No MEGS survey in give year
-disp.err(subset(dat,!(Year %in% seq(1977,2013,by=3))),
-         NULL)
+#'#### No MEGS survey in given year
+disp.err(!(dat$Year %in% seq(1977,2013,by=3)), NULL)
 
-#'#### Hours or minutes are nonsensical
-disp.err(subset(dat,!(Hour %in% 0:24) | !(Minutes %in% 0:60)),
-         c("Hour","Minutes"))
+#'#### Hours are nonsensical
+disp.err(!(dat$Hour %in% c(NA,0:24)), "Hour")
+
+#'#### Minutes are nonsensical
+disp.err(!(dat$Minutes %in% c(NA,0:60)), "Minutes")
 
 #/* ========================================================================*/
-#'# Distribution of samples
+#'# Spatial integrity of the data
 #' The following tests check for errors in the spatial coordinates (decLon, 
-#' decLat). Points that are on land are marked in red.
+#' decLat). 
 #/* ========================================================================*/
+#' #### Missing spatial coordinates
+sp.missing <-  is.na(dat$declon) | is.na(dat$declat)
+disp.err(sp.missing,c("declon","declat"))
+
 #Create spatial object
-dat.sp <- dat
-coordinates(dat.sp) <- ~ declon + decLat
+dat.sp <- subset(dat,!sp.missing)
+coordinates(dat.sp) <- ~ declon + declat
 proj4string(dat.sp) <- CRS("+proj=longlat")
 
 #Extract coastlines
 map.dat <- map("worldHires",
                xlim=bbox(dat.sp)["declon",],
-               ylim=bbox(dat.sp)["decLat",],
+               ylim=bbox(dat.sp)["declat",],
                plot=FALSE,fill=TRUE,res=0)
 map.sp <- map2SpatialPolygons(map.dat,map.dat$names)
 proj4string(map.sp) <- proj4string(dat.sp)
 
 #Test for points on land
-on.land <- over(dat.sp,map.sp)
+onland <- !is.na(over(dat.sp,map.sp))
+onland.ids <- dat.sp$Unique.ID[onland]
 
-#Plot spatial distribution
-plot(dat.sp,pch=NA)
+#'#### Points on land
+disp.err(dat$Unique.ID %in% onland.ids,c("declon","declat"))
+
+#'#### Plot spatial distribution
+#'Check here that all of the points appear within the expected domain. Points
+#'identified as being on land above are plotted in red - all other wet points
+#'are plotted in blue.
+plot(dat.sp,pch=16,cex=0.5,col="blue")
 plot(map.sp,add=TRUE,col="grey")
 box()
 plot(dat.sp,add=TRUE,
-     pch=16,col=ifelse(is.na(on.land),"black","red"),
-     cex=ifelse(is.na(on.land),0.5,1))
+     pch=16,col=ifelse(onland,"red",NA),)
 
-#' Points on land
-disp.err(subset(dat,!is.na(on.land)),c("declon","decLat"))
+#/* ========================================================================*/
+#'# Volume Filtered
+#' The volume filtered is key to the successful calculation of egg production.
+#' Errors here can easily be problematic
+#/* ========================================================================*/
+#'#### Volume Filtered Missing Values
+disp.err(is.na(dat$VolFilt),"VolFilt")
+
+#'#### Volume Filtered by Gear / Year
+#'Severe outliers here can be indicative of calibration errors or data entry
+#'problems. The data is grouped acording to gear, to give an idea of what is 
+#'"normal" for that gear
+bwplot(VolFilt~factor(Year) | Gear,data=dat,
+       scales=list(x=list(rot=90,alternating=FALSE),y=list(log=10)),
+       as.table=TRUE,
+       xlab="Year",ylab="Volume Filtered")
 
 #/* ========================================================================*/
 #'# Derived Values
@@ -230,24 +282,35 @@ dat$POSIX <- with(dat,
                                ifelse(is.na(Hour),12,Hour),
                                ifelse(is.na(Minutes),30,Minutes),
                                00,tz="GMT"))
-disp.err(subset(dat,is.na(dat$POSIX)),c("Year","Month","Day","Hour","Minutes"))
+disp.err(is.na(dat$POSIX),c("Year","Month","Day","Hour","Minutes"))
 
 #'#### Calculation of the Egg Development time
 #'Errors here can arise due to missing temperature data. Temperature data is 
 #'preferentially used at 20 m - if it is absent, then 5m is used.
-dat$Temp <- ifelse(!is.na(dat$Temp20m),dat$Temp20m,dat$Temp5m)
-disp.err(subset(dat,is.na(dat$Temp)),c("Temp","Temp20m","Temp5m"))
+dat$Temp <- ifelse(!is.na(dat$Temp20m),dat$Temp20m,dat$TempSur.5m.)
+disp.err(is.na(dat$Temp),c("Temp","Temp20m","TempSur.5m."),from=dat)
 
 #'These errors can also propigate through to the estimated egg development time
 dat$dev.time <- exp(-1.31*log(dat$Temp)+6.90) #Based on Mendiola et al. (2006)
-disp.err(subset(dat,is.na(dat$dev.time)),c("Temp","dev.time"))
+disp.err(is.na(dat$dev.time),c("Temp","dev.time"),from=dat)
 
 #'#### Offset factor
 #'The offset factor is the relationship between the local egg production and
-#'the number of eggs that are actually 
+#'the number of eggs that are actually counted. Problems here can arise from
+#'any one of these factors.
 dat <- transform(dat,offset.factor=VolFilt*dev.time/raising.factor/Sdepth)
-disp.err(subset(dat,is.na(dat$dev.time)),
-         c("VolFilt","Sdepth","raising.factor","dev.time"))
+disp.err(is.na(dat$offset.factor),
+         c("VolFilt","Sdepth","raising.factor","dev.time"),from=dat)
+
+#/* ========================================================================*/
+#   Complete
+#/* ========================================================================*/
+#'
+#'-----------
+#+ echo=FALSE,results='asis'
+if(grepl("pdf|png|wmf",names(dev.cur()))) {dmp <- dev.off()}
+log.msg("\nAnalysis complete in %.1fs at %s.\n",proc.time()[3]-start.time,date())
+
 
 #Useage notes
 #   - This script contains and supports RMarkdown. To build it to HTML
