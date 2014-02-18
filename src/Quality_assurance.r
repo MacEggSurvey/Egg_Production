@@ -94,17 +94,17 @@ colnames(dat)
 #'#### Data by Year
 print(table(Year=dat$Year),zero.print=".")
 
-#'#### Gear by Year
-print(table(Gear=dat$Gear,Year=dat$Year),zero.print=".")
-
-#'#### Vessel by Year
-print(table(Vessel=dat$Vessel,Year=dat$Year),zero.print=".")
+#'#### Period by Year
+print(table(Year=dat$Year,Period=dat$Period),zero.print=".")
 
 #'#### Country by Year
 print(table(Country=dat$Country,Year=dat$Year),zero.print=".")
 
-#'#### Period by Year
-print(table(Year=dat$Year,Period=dat$Period),zero.print=".")
+#'#### Gear by Year and Component
+print(table(Gear=dat$Gear,Year=dat$Year,Component=dat$Component),zero.print=".")
+
+#'#### Vessel by Year
+print(table(Vessel=dat$Vessel,Year=dat$Year),zero.print=".")
 
 #'#### Year - Country - Vessel - Gear table
 prt.dat <- melt(table(Year=dat$Year,Country=dat$Country,Vessel=dat$Vessel,Gear=dat$Gear))
@@ -155,7 +155,7 @@ dat.raw <- dat
 dat[names(parsed.cols)] <- parsed.cols
 
 #/* ========================================================================*/
-#'# Error detection Algorithms
+#'# Mackerel Stage Problems
 #' The following tests check for specific types of errors that may, or may not
 #' occur in the database. Where an error is detected, some of the key details
 #' of the database row that contain that value are given, unless there are more
@@ -163,12 +163,14 @@ dat[names(parsed.cols)] <- parsed.cols
 #' pre-parsing, which generally makes it easier to interpret.
 #/* ========================================================================*/
 #First, setup a display function
-disp.err <- function(test,colnames,from=dat.raw) {
+disp.err <- function(test,colnames,from=dat.raw,n.max=250) {
   idxs <- which(test)
   if(length(idxs) ==0) {
     cat("No errors detected\n") 
-  } else if(length(idxs)>250) {
+  } else if(length(idxs)>n.max) {
     cat(sprintf("Errors detected in %i rows. \n",length(idxs)))
+    d <- subset(from,test)
+    print(table(Year=d$Year))
     #print(d$Unique.ID)
   } else {
     print(from[idxs,c("Unique.ID","Year","Country","Vessel",colnames)],
@@ -176,32 +178,126 @@ disp.err <- function(test,colnames,from=dat.raw) {
   }
 }
 
-#'#### Raising factor (MacFactor) Missing / Failed to Parse
-disp.err(is.na(dat$MacFactor),c("MacFactor"))
+disp.range <- function(x,n=10) {
+  rbind(smallest=sort(x)[1:n],
+        largest=sort(x,decreasing=TRUE)[1:n])
+}
 
-#'#### Raising factor is less than 1
+#'#### Gaps in Mac1, MacStage1 and/or MacFactor data
+#'If two out of Mac1, MacStage1 and MacFactor are present, it is possible to calculate
+#'the missing value. But if there are two missing, there is a problem. Ideally all
+#'should be present
+disp.err(is.na(dat$Mac1) | is.na(dat$MacStage1) | is.na(dat$MacFactor), 
+         c("Mac1","MacStage1","MacFactor"),n.max=500)
+
+#'#### Gaps in Mac2 and/or MacStage2 data
+disp.err(is.na(dat$Mac2) | is.na(dat$MacStage2),
+         c("Mac2","MacStage2"),n.max=100)
+
+#'#### Gaps in Mac3 and/or MacStage3 data
+disp.err(is.na(dat$Mac3) | is.na(dat$MacStage3),
+         c("Mac3","MacStage3"),n.max=100)
+
+#'#### Gaps in Mac4 and/or MacStage4 data
+disp.err(is.na(dat$Mac4) | is.na(dat$MacStage4),
+         c("Mac4","MacStage4"),n.max=100)
+
+#'#### Gaps in Mac5 and/or MacStage5 data
+disp.err(is.na(dat$Mac5) | is.na(dat$MacStage5),
+         c("Mac5","MacStage5"),n.max=100)
+
+#'#### Distribution of Mackerel Raising Factors
+plot(ecdf(dat$MacFactor),main="Cumulative Distribution of MacFactor",
+     xlab="MacFactor")
+#'Range of values in the database
+disp.range(dat$MacFactor)
+
+#'#### Mackerel Raising factor is less than 1
 disp.err(dat$MacFactor<1,"MacFactor")
 dat$raising.factor <- ifelse(is.na(dat$MacFactor),1,
                              dat$MacFactor) #If missing, set to 1
 dat$raising.factor <- ifelse(dat$raising.factor<1,    #If less than 1, its been inverted
                              1/dat$raising.factor,dat$raising.factor)
 
+#'#### Check that the raising factor agrees with the raising factor
+d <- dat
+d$estimated.rf <- round(d$MacStage1/d$Mac1,2)  #Round it to 2 dp 
+d$raising.factor <- round(d$raising.factor,2)
+d$diff <- d$estimated.rf - d$raising.factor
+plot(d$estimated.rf,d$raising.factor,
+     xlab="Estimated Raising Factor",ylab="Raising factor")
+disp.err(d$estimated.rf!=d$raising.factor,
+         c("Mac1","MacStage1","estimated.rf","raising.factor","diff"),from=d)
+
+#/* ========================================================================*/
+#'# Horse Mackerel Stage Problems
+#/* ========================================================================*/
+#'#### Gaps in Hom1, HomStage1 and/or HomFactor data
+#'If two out of Hom1, HomStage1 and HomFactor are present, it is possible to calculate
+#'the missing value. But if there are two missing, there is a problem. Ideally all
+#'should be present
+disp.err(is.na(dat$Hom1) | is.na(dat$HomStage1) | is.na(dat$HomFactor), 
+         c("Hom1","HomStage1","HomFactor"),n.max=500)
+
+#'#### Gaps in Hom2 and/or HomStage2 data
+disp.err(is.na(dat$Hom2) | is.na(dat$HomStage2),
+         c("Hom2","HomStage2"),n.max=100)
+
+#'#### Gaps in Hom3 and/or HomStage3 data
+disp.err(is.na(dat$Hom3) | is.na(dat$HomStage3),
+         c("Hom3","HomStage3"),n.max=100)
+
+#'#### Gaps in Hom4 and/or HomStage4 data
+disp.err(is.na(dat$Hom4) | is.na(dat$HomStage4),
+         c("Hom4","HomStage4"),n.max=100)
+
+#'#### Distribution of Horse Mackerel Raising Factors
+plot(ecdf(dat$HomFactor),main="Cumulative Distribution of HomFactor",
+     xlab="HomFactor")
+#'Range of values in the database
+disp.range(dat$HomFactor)
+
+#'#### Horse Mackerel Raising factor is less than 1
+disp.err(dat$MacFactor<1,"MacFactor")
+
+#/* ========================================================================*/
+#'# Environmental and Sampling Data
+#' These algorithms look for specific errors in the enviromental data
+#/* ========================================================================*/
+#'#### Temperature at both 5m and 20m missing
+disp.err(is.na(dat$TempSur.5m.)&is.na(dat$Temp20m),
+         c("TempSur.5m.","Temp20m"))
+
+#'#### Distribution of Temperature values
+plot(ecdf(dat$TempSur.5m.),main="Cumulative Distribution of TempSur.5m.",
+     xlab="TempSur.5m.")
+#'Range of values in the database
+disp.range(dat$TempSur.5m.)
+
+plot(ecdf(dat$TempSur.5m.),main="Cumulative Distribution of Temp20m",
+     xlab="Temp20m")
+#'Range of values in the database
+disp.range(dat$Temp20m)
+
+#'#### Salinity data is missing
+disp.err(is.na(dat$Sal20m),"Sal20m")
+
+#'#### Distribution of Salinity values
+#'Salinity in the North Atlantic is typically going to be between 30 and 40 psu. Values
+#'outside this range are clearly wrong. Visualising the distribution is an easy way to 
+#'check for outliers
+plot(ecdf(dat$Sal20m),main="Cumulative Distribution of Sal20m",
+     xlab="Sal20m")
+#'Range of values in the database
+disp.range(dat$Sal20m)
 
 #'#### Sampling depth (Sdepth) Missing / Failed to Parse
 disp.err(is.na(dat$Sdepth),c("Sdepth"))
 
-#'####  Mac1 missing / failed to parse
-disp.err(is.na(dat$Mac1) , "Mac1")
-
-#'#### Both Mac1 and MacStage1 data are missing
-#'If two out of Mac1, MacStage1 and MacFactor are present, it is possible to calculate
-#'the missing value. But if there are two missing, there is a problem
-disp.err(is.na(dat$Mac1) & is.na(dat$MacStage1), 
-         c("Mac1","MacStage1"))
-
-#'#### Temperature at both 5m and 20m missing
-disp.err(is.na(dat$TempSur.5m.)&is.na(dat$Temp20m),
-         c("TempSur.5m.","Temp20m"))
+#/* ========================================================================*/
+#'# Temporal Data
+#' These algorithms look for specific errors in the temporal data
+#/* ========================================================================*/
 
 #'#### No MEGS survey in given year
 disp.err(!(dat$Year %in% seq(1977,2013,by=3)), NULL)
@@ -219,7 +315,7 @@ disp.err(!(dat$Minutes %in% c(NA,0:60)), "Minutes")
 #/* ========================================================================*/
 #' #### Missing spatial coordinates
 sp.missing <-  is.na(dat$declon) | is.na(dat$declat)
-disp.err(sp.missing,c("declon","declat"))
+disp.err(sp.missing,c("declon","declat","LongDeg","LongMins","LatDeg","LatMins","E.W"))
 
 #Create spatial object
 dat.sp <- subset(dat,!sp.missing)
@@ -246,10 +342,9 @@ disp.err(dat$Unique.ID %in% onland.ids,c("declon","declat"))
 #'identified as being on land above are plotted in red - all other wet points
 #'are plotted in blue.
 plot(dat.sp,pch=16,cex=0.5,col="blue")
-plot(map.sp,add=TRUE,col="grey")
+map("worldHires",add=TRUE,col="grey",fill=TRUE)
 box()
-plot(dat.sp,add=TRUE,
-     pch=16,col=ifelse(onland,"red",NA),)
+plot(dat.sp,add=TRUE,pch=16,col=ifelse(onland,"red",NA))
 
 #/* ========================================================================*/
 #'# Volume Filtered
@@ -263,6 +358,7 @@ disp.err(is.na(dat$VolFilt),"VolFilt")
 #'Severe outliers here can be indicative of calibration errors or data entry
 #'problems. The data is grouped acording to gear, to give an idea of what is 
 #'"normal" for that gear
+#+fig.width=10
 bwplot(VolFilt~factor(Year) | Gear,data=dat,
        scales=list(x=list(rot=90,alternating=FALSE),y=list(log=10)),
        as.table=TRUE,
@@ -282,6 +378,7 @@ dat$POSIX <- with(dat,
                                ifelse(is.na(Hour),12,Hour),
                                ifelse(is.na(Minutes),30,Minutes),
                                00,tz="GMT"))
+dat$doy <- as.POSIXlt(dat$POSIX)$yday +1
 disp.err(is.na(dat$POSIX),c("Year","Month","Day","Hour","Minutes"))
 
 #'#### Calculation of the Egg Development time
@@ -302,6 +399,17 @@ dat <- transform(dat,offset.factor=VolFilt*dev.time/raising.factor/Sdepth)
 disp.err(is.na(dat$offset.factor),
          c("VolFilt","Sdepth","raising.factor","dev.time"),from=dat)
 
+
+#'#### Definitions of Periods
+#'Plotting the assigned period against the day of year when the sample
+#'is performed can be used to detect samples that are not necessarily in
+#'agreement with the rest of the samples in that period. Points are coloured
+#'according to vessel. Vertical "jittering" is used to help the visualisation
+#+fig.width=10
+xyplot(jitter(Period) ~ doy | factor(Year),dat,
+       group=Vessel,as.table=TRUE,
+       xlab="Day of Year",ylab="Period")
+
 #/* ========================================================================*/
 #   Complete
 #/* ========================================================================*/
@@ -317,17 +425,9 @@ log.msg("\nAnalysis complete in %.1fs at %s.\n",proc.time()[3]-start.time,date()
 #     use the following commands
 #       > library(knitr)
 #       > opts_knit$set(root.dir=getwd())
+#       > options("markdown.HTML.options"=c(getOption("markdown.HTML.options"),"toc"))
 #       > spin("this_file.r")
 #     and open the corresponding html file e.g. in Firefox
-#   - If you don't like the format that spin() generates directly, you can
-#     use the following approach
-#       > library(markdown)
-#       > options("markdown.HTML.stylesheet"="/usr/lib/rstudio/resources/markdown.css")
-#       > spin("R_template.r")
-#       > markdownToHTML("R_template.md","R_template.html",
-#               stylesheet="/usr/lib/rstudio/resources/markdown.css"
-#     if you're really keen. Alternatively, open the corresponding Rmd and compile
-#     it using Rstudio instead.
 #   - Add markdown directly using #'
 #   - Add code chunk options directly using #+
 #
