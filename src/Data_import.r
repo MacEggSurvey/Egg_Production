@@ -56,7 +56,7 @@ library(tools)
 opts_chunk$set(results="markup",echo=FALSE)
 
 #/* ========================================================================*/
-#  Load data
+#  Identify data file
 #/* ========================================================================*/
 #Identify input data source
 fname <- dir("data",pattern=".*csv$",full.names=TRUE)
@@ -71,10 +71,28 @@ f.details <- data.frame(filesize=file.info(fname)$size,
              "last modification time"=file.info(fname)$mtime,
              "md5 Checksum"=md5sum(fname))
 
-#Read in data from the CSV.
-log.msg("Loading data...")
-dat <- read.csv2(fname,colClasses="character") #Read all as character
+#/* ========================================================================*/
+#  Load data
+#/* ========================================================================*/
+#Reading the data is a bit tricky, as there are two potential formats - one
+#that is comma separated with "." for a decimal point, and one that is a
+#semi-colon seperated with a comma for a decimal point. The type that is generated
+#is dependent on the Locale of the machine that is used to cover it.
+#We need to identify the format, and then load the data accordingly
+#Read in the first line and count number of dots / periods
+hdr <- readLines(fname,n=1)
+n.comma <- nchar(gsub("[^;]","",hdr))
+n.dot <- nchar(gsub("[^,]","",hdr))
 
+#Load data accordingly
+log.msg("Loading data...")
+if(n.dot > n.comma) {
+  dat <- read.csv(fname,colClasses="character",
+                  na.strings=c("NA","")) 
+} else {
+  dat <- read.csv2(fname,colClasses="character",
+                  na.strings=c("NA","")) 
+}
 #Set rownames. We use the rownumbers from the csv, assuming the header to
 #be row 1 and the data starting on row 2 - hopefully these
 #should help find the problem quickly
