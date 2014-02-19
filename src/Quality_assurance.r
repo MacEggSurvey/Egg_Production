@@ -346,6 +346,23 @@ map("worldHires",add=TRUE,col="grey",fill=TRUE)
 box()
 plot(dat.sp,add=TRUE,pch=16,col=ifelse(onland,"red",NA))
 
+#'#### Plot component assignments
+#'Check here that there is consistency in the definition of the spatial
+#'components
+#+fig.width=10
+map.poly <- map("world",plot=FALSE,fill=TRUE,
+                xlim=range(pretty(dat$declon)),
+                ylim=range(pretty(dat$declat)))
+xyplot(declat ~ declon | factor(Year)*factor(Component),dat,
+       as.table=TRUE,
+       asp=2,
+       panel=function(...){
+            panel.polygon(map.poly,col="grey")
+            panel.xyplot(...)
+       })
+       
+
+
 #/* ========================================================================*/
 #'# Volume Filtered
 #' The volume filtered is key to the successful calculation of egg production.
@@ -411,11 +428,42 @@ xyplot(jitter(Period) ~ doy | factor(Year),dat,
        xlab="Day of Year",ylab="Period")
 
 #/* ========================================================================*/
+#   Final data preparation
+#/* ========================================================================*/
+#Make corrections to Mac1
+dat$raising.factor <- ifelse(is.na(dat$MacFactor),1,dat$MacFactor) #If missing, set to 1
+dat$raising.factor <- ifelse(dat$raising.factor<1,    #If less than 1, its been inverted
+                             1/dat$raising.factor,dat$raising.factor)
+
+dat$n.counted <- ifelse(is.na(dat$Mac1) & is.na(dat$MacStage1), #If both Mac1 and MacStage1 missing, set to zero
+                        0,dat$Mac1)  
+dat$n.counted <- ifelse(is.na(dat$Mac1) & !is.na(dat$MacStage1),  #Data has been entered as raised instead
+                        dat$MacStage1/dat$raising.factor,  dat$n.counted)
+
+if(any(is.na(dat$n.counted),is.na(dat$raising.factor))) {#Final check that we got all the errors in Egg counts
+  stop("Egg count errors remain. Please check.")
+}
+
+#Correct temperatures
+dat$Temp <- ifelse(!is.na(dat$Temp20m),dat$Temp20m,dat$TempSur.5m.)
+if(any(is.na(dat$Temp))) {#Final check that we got all the errors in Egg counts
+  warning("Temperature errors remain. Please check.")
+}
+
+#Calcualte the Offset factor
+dat$dev.time <- exp(-1.31*log(dat$Temp)+6.90) #Based on Mendiola et al. (2006)
+dat <- transform(dat,offset.factor=VolFilt*dev.time/raising.factor/Sdepth)
+dat$EP.est <- dat$n.counted/dat$offset.factor
+
+#/* ========================================================================*/
 #   Complete
 #/* ========================================================================*/
 #'
 #'-----------
 #+ echo=FALSE,results='asis'
+#Save results
+save(dat,file="objects//EP_data_QA.RData")
+
 if(grepl("pdf|png|wmf",names(dev.cur()))) {dmp <- dev.off()}
 log.msg("\nAnalysis complete in %.1fs at %s.\n",proc.time()[3]-start.time,date())
 
