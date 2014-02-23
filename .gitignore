@@ -2,4 +2,8 @@
 .Rhistory
 .RData
 .Rproj
+.md
+.Rmd
+.html
+.pdf
 mdfigures/
