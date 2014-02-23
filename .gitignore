@@ -1,5 +1,9 @@
 .Rproj.user
 .Rhistory
 .RData
-.Rproj
+*.Rproj
+*.md
+*.Rmd
+*.html
+*.pdf
 mdfigures/
