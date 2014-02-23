@@ -65,7 +65,7 @@ options("width"=120)
 #'  MEGS database. The details of the analysed file are as follows:
 #/* ========================================================================*/
 #Load data file
-load("objects//EP_data_raw.RData")
+load("objects//Egg_data_raw.RData")
 
 # File details
 f.details <- attr(dat,"source.details")
@@ -405,15 +405,15 @@ dat$Temp <- ifelse(!is.na(dat$Temp20m),dat$Temp20m,dat$TempSur.5m.)
 disp.err(is.na(dat$Temp),c("Temp","Temp20m","TempSur.5m."),from=dat)
 
 #'These errors can also propigate through to the estimated egg development time
-dat$dev.time <- exp(-1.31*log(dat$Temp)+6.90) #Based on Mendiola et al. (2006)
+dat$dev.time <- exp(-1.31*log(dat$Temp)+6.90)/24 #Based on Mendiola et al. (2006)
 disp.err(is.na(dat$dev.time),c("Temp","dev.time"),from=dat)
 
-#'#### Offset factor
-#'The offset factor is the relationship between the local egg production and
+#'#### Sampling factor
+#'The sampling factor is the relationship between the local egg production rate and
 #'the number of eggs that are actually counted. Problems here can arise from
 #'any one of these factors.
-dat <- transform(dat,offset.factor=VolFilt*dev.time/raising.factor/Sdepth)
-disp.err(is.na(dat$offset.factor),
+dat <- transform(dat,sampling.factor=VolFilt*dev.time/raising.factor/Sdepth)
+disp.err(is.na(dat$sampling.factor),
          c("VolFilt","Sdepth","raising.factor","dev.time"),from=dat)
 
 
@@ -450,10 +450,13 @@ if(any(is.na(dat$Temp))) {#Final check that we got all the errors in Egg counts
   warning("Temperature errors remain. Please check.")
 }
 
-#Calcualte the Offset factor
-dat$dev.time <- exp(-1.31*log(dat$Temp)+6.90) #Based on Mendiola et al. (2006)
-dat <- transform(dat,offset.factor=VolFilt*dev.time/raising.factor/Sdepth)
-dat$EP.est <- dat$n.counted/dat$offset.factor
+#Calcualte the Egg development time (in days)
+dat$dev.time <- exp(-1.31*log(dat$Temp)+6.90)/24 #Based on Mendiola et al. (2006)
+#Lockwood equation:  (24*BF4)/EXP(-1.61*LN(AC4)+7.76)
+
+#Calculate the sampling factor and estimated egg production rate
+dat <- transform(dat,sampling.factor=VolFilt*dev.time/raising.factor/Sdepth)
+dat$EPR.est <- dat$n.counted/dat$sampling.factor
 
 #/* ========================================================================*/
 #   Complete
@@ -462,7 +465,7 @@ dat$EP.est <- dat$n.counted/dat$offset.factor
 #'-----------
 #+ echo=FALSE,results='asis'
 #Save results
-save(dat,file="objects//EP_data_QA.RData")
+save(dat,file="objects//EPR_data_QA.RData")
 
 if(grepl("pdf|png|wmf",names(dev.cur()))) {dmp <- dev.off()}
 log.msg("\nAnalysis complete in %.1fs at %s.\n",proc.time()[3]-start.time,date())

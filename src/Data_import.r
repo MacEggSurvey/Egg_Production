@@ -109,7 +109,7 @@ dat <- subset(dat,!mt.row)
 attr(dat,"source.details") <- f.details
 
 #Save data
-save(dat,file="objects/EP_data_raw.RData")
+save(dat,file="objects/Egg_data_raw.RData")
 
 #/* ========================================================================*/
 #   Complete
