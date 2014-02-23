@@ -474,10 +474,10 @@ log.msg("\nAnalysis complete in %.1fs at %s.\n",proc.time()[3]-start.time,date()
 #Useage notes
 #   - This script contains and supports RMarkdown. To build it to HTML
 #     use the following commands
-#       > library(knitr)
-#       > opts_knit$set(root.dir=getwd())
-#       > options("markdown.HTML.options"=c(getOption("markdown.HTML.options"),"toc"))
-#       > spin("this_file.r")
+#        library(knitr)
+#        opts_knit$set(root.dir=getwd())
+#        options("markdown.HTML.options"=c(getOption("markdown.HTML.options"),"toc"))
+#        spin("src//Quality_assurance.r")
 #     and open the corresponding html file e.g. in Firefox
 #   - Add markdown directly using #'
 #   - Add code chunk options directly using #+
