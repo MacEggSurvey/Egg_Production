@@ -1,51 +1,51 @@
-#+ setup, include=FALSE,results="hide",messages=FALSE
-#  ##########################################################################
-#' MEGS Quality Assurance
-#' =====================================================================
+#/*##########################################################################*/
+#' MEGS Quality Assurance Report
+#' ==========================================================================
 #'
 #' by Mark R Payne
 #' DTU-Aqua, Charlottenlund, Denmark
 #' mpa@aqua.dtu.dk
 #'
-#/* Mon Feb 17 10:02:58 2014
+#' This script/report performs a series of basic checks on the MEGS database.
+#' The aim is to detect some of the most obvious errors that can pop up in
+#' data collection and data entry, and thereby give the database maintainers
+#' the opportunity to correct them. The results take here should be taken with
+#' a "picnh of salt" - false positives, or strange results with perfectly good
+#' reasons behind them, can easily occur in such a system.
 #
-# Performs quality assurance checks on the MEGS database
+#  This work is subject to a Creative Commons "Attribution" "ShareALike" License.
+#  You are largely free to do what you like with it, so long as you "attribute" 
+#  me for my contribution. See the fine print at the end for exact details.
 #
 #  To do:
 #
 #  Notes:
-#   - This script contains RMarkdown. For instructions on
-#     how to build it into HTML, please see the end of the file 
-# */
-#' <small>*This work by Mark R Payne is licensed under a  Creative Commons
-#' Attribution-NonCommercial-ShareAlike 3.0 Unported License. 
-#' For details, see http://creativecommons.org/licenses/by-nc-sa/3.0/deed.en_US
-#' Basically, this means that you are free to "share" and "remix" for 
-#' non-commerical purposes as you see fit, so long as you "attribute" me for my
-#' contribution. Derivatives can be distributed under the same or 
-#' similar license.*</small>
-#'
-#' <small>*This work comes with ABSOLUTELY NO WARRANTY or support.*</small>
-#'
-#' <small>*This work is also subject to the BEER-WARE License. For details, see
-#' http://en.wikipedia.org/wiki/Beerware*</small>
-#'
+#   - This script contains RMarkdown. Generate HTML with the following commands.
+#           this.script <- "src/Quality_assurance.r"
+#           opts_knit$set(output.suffix="QA.html")  
+#           library(knitr);library(markdown)
+#           opts_knit$set(root.dir=getwd(),width=120,unnamed.chunk.label="unnamed")
+#           opts_chunk$set(echo=FALSE,results="hide",fig.width=10,
+#                          message=FALSE,error=FALSE,fig.path="plots/")
+#           this.script.HTML <- spin(this.script)
+#           options("markdown.HTML.options"=c(markdownHTMLOptions(TRUE),"toc"))
+#           markdownToHTML(gsub("html$","md",this.script.HTML),this.script.HTML)
+#           file.rename(this.script.HTML,sprintf("outputs/%s_%s",
+#                                  basename(rownames(f.details)),
+#                                  opts_knit$get("output.suffix")))
+#           file.remove(gsub("html$","md",this.script.HTML))
 #/*##########################################################################*/
-#+ include=FALSE
 
 # ========================================================================
 # Initialise system
 # ========================================================================
-#Configure markdown stlye
-require(knitr)
-opts_chunk$set(echo=FALSE,results="hide",messages=FALSE,fig.path="mdfigures/")
-
-# House cleaning
-rm(list = ls(all.names=TRUE));  graphics.off()
-start.time <- proc.time()[3]; options(stringsAsFactors=FALSE)
 cat(sprintf("\n%s\n","MEGS Quality Assurance"))
-cat(sprintf("Analysis performed %s\n\n",date()))
 
+#Configure markdown style, do house cleaning
+rm(list = ls(all.names=TRUE));  graphics.off();
+start.time <- proc.time()[3]; options(stringsAsFactors=FALSE)
+
+#Helper functions, externals and libraries
 log.msg <- function(fmt,...) {cat(sprintf(fmt,...));
                               flush.console();return(invisible(NULL))}
 library(sp)
@@ -54,11 +54,35 @@ library(tools)
 library(reshape)
 library(maps);library(mapdata);library(maptools)
 
-#Start recording from here
-opts_chunk$set(results="markup",echo=FALSE,messages=FALSE)
-#+results="asis"
+#Start recording output from here
+opts_chunk$set(results="markup")
+#+ results="asis"
 cat(sprintf("Analysis performed %s\n\n",date()))
-options("width"=120)
+
+#/* ========================================================================*/
+#  Helper functions
+#/* ========================================================================*/
+#First, setup a display function
+disp.err <- function(test,colnames,from=dat.raw,n.max=250) {
+  idxs <- which(test)
+  if(length(idxs) ==0) {
+    cat("No errors detected\n") 
+  } else if(length(idxs)>n.max) {
+    cat(sprintf("Errors detected in %i rows. \n",length(idxs)))
+    d <- subset(from,test)
+    print(table(Year=d$Year))
+    #print(d$Unique.ID)
+  } else {
+    print(from[idxs,c("Unique.ID","Year","Country","Vessel",colnames)],
+          row.names=TRUE)
+  }
+}
+
+disp.range <- function(x,n=10) {
+  rbind(smallest=sort(x)[1:n],
+        largest=sort(x,decreasing=TRUE)[1:n])
+}
+
 #/* ========================================================================*/
 #'# Introduction
 #'  This work documents the results of quality assurance checks on the the
@@ -108,7 +132,8 @@ print(table(Vessel=dat$Vessel,Year=dat$Year),zero.print=".")
 
 #'#### Year - Country - Vessel - Gear table
 prt.dat <- melt(table(Year=dat$Year,Country=dat$Country,Vessel=dat$Vessel,Gear=dat$Gear))
-prt.dat <- prt.dat[order(prt.dat[,1:4]),]
+prt.dat <- prt.dat[order(prt.dat$Year,prt.dat$Country,
+                         prt.dat$Vessel,prt.dat$Gear),]
 print(subset(prt.dat,value!=0),row.names=FALSE)
 
 #/* ========================================================================*/
@@ -124,7 +149,7 @@ print(subset(prt.dat,value!=0),row.names=FALSE)
 #First, expect that we have all the column names that we expect to retain
 #as characters
 allowed.char.cols <- c("Unique.ID","Component","Country","Vessel","Gear","E.W",
-                       "HALFST")
+                       "HALFST","NoteLineRef_no")
 if(any(!allowed.char.cols %in% colnames(dat))) {
   stop("Expected character columns are missing")
 }
@@ -162,49 +187,29 @@ dat[names(parsed.cols)] <- parsed.cols
 #' than 250 such values. Note that the values of the columns of concern are
 #' pre-parsing, which generally makes it easier to interpret.
 #/* ========================================================================*/
-#First, setup a display function
-disp.err <- function(test,colnames,from=dat.raw,n.max=250) {
-  idxs <- which(test)
-  if(length(idxs) ==0) {
-    cat("No errors detected\n") 
-  } else if(length(idxs)>n.max) {
-    cat(sprintf("Errors detected in %i rows. \n",length(idxs)))
-    d <- subset(from,test)
-    print(table(Year=d$Year))
-    #print(d$Unique.ID)
-  } else {
-    print(from[idxs,c("Unique.ID","Year","Country","Vessel",colnames)],
-          row.names=TRUE)
-  }
-}
 
-disp.range <- function(x,n=10) {
-  rbind(smallest=sort(x)[1:n],
-        largest=sort(x,decreasing=TRUE)[1:n])
-}
-
-#'#### Gaps in Mac1, MacStage1 and/or MacFactor data
-#'If two out of Mac1, MacStage1 and MacFactor are present, it is possible to calculate
+#'#### Gaps in Mac1, Raised_MacStage1 and/or MacFactor data
+#'If two out of Mac1, Raised_MacStage1 and MacFactor are present, it is possible to calculate
 #'the missing value. But if there are two missing, there is a problem. Ideally all
 #'should be present
-disp.err(is.na(dat$Mac1) | is.na(dat$MacStage1) | is.na(dat$MacFactor), 
-         c("Mac1","MacStage1","MacFactor"),n.max=500)
+disp.err(is.na(dat$Mac1) | is.na(dat$Raised_MacStage1) | is.na(dat$MacFactor), 
+         c("Mac1","Raised_MacStage1","MacFactor"),n.max=500)
 
-#'#### Gaps in Mac2 and/or MacStage2 data
-disp.err(is.na(dat$Mac2) | is.na(dat$MacStage2),
-         c("Mac2","MacStage2"),n.max=100)
+#'#### Gaps in Mac2 and/or Raised_MacStage2 data
+disp.err(is.na(dat$Mac2) | is.na(dat$Raised_MacStage2),
+         c("Mac2","Raised_MacStage2"),n.max=100)
 
-#'#### Gaps in Mac3 and/or MacStage3 data
-disp.err(is.na(dat$Mac3) | is.na(dat$MacStage3),
-         c("Mac3","MacStage3"),n.max=100)
+#'#### Gaps in Mac3 and/or Raised_MacStage3 data
+disp.err(is.na(dat$Mac3) | is.na(dat$Raised_MacStage3),
+         c("Mac3","Raised_MacStage3"),n.max=100)
 
-#'#### Gaps in Mac4 and/or MacStage4 data
-disp.err(is.na(dat$Mac4) | is.na(dat$MacStage4),
-         c("Mac4","MacStage4"),n.max=100)
+#'#### Gaps in Mac4 and/or Raised_MacStage4 data
+disp.err(is.na(dat$Mac4) | is.na(dat$Raised_MacStage4),
+         c("Mac4","Raised_MacStage4"),n.max=100)
 
-#'#### Gaps in Mac5 and/or MacStage5 data
-disp.err(is.na(dat$Mac5) | is.na(dat$MacStage5),
-         c("Mac5","MacStage5"),n.max=100)
+#'#### Gaps in Mac5 and/or Raised_MacStage5 data
+disp.err(is.na(dat$Mac5) | is.na(dat$Raised_MacStage5),
+         c("Mac5","Raised_MacStage5"),n.max=100)
 
 #'#### Distribution of Mackerel Raising Factors
 plot(ecdf(dat$MacFactor),main="Cumulative Distribution of MacFactor",
@@ -219,37 +224,37 @@ dat$raising.factor <- ifelse(is.na(dat$MacFactor),1,
 dat$raising.factor <- ifelse(dat$raising.factor<1,    #If less than 1, its been inverted
                              1/dat$raising.factor,dat$raising.factor)
 
-#'#### Check that the raising factor agrees with the raising factor
+#'#### Check that the calculated raising factor agrees with the reported raising factor
 d <- dat
-d$estimated.rf <- round(d$MacStage1/d$Mac1,2)  #Round it to 2 dp 
+d$estimated.rf <- round(d$Raised_MacStage1/d$Mac1,2)  #Round it to 2 dp 
 d$raising.factor <- round(d$raising.factor,2)
 d$diff <- d$estimated.rf - d$raising.factor
 plot(d$estimated.rf,d$raising.factor,
      xlab="Estimated Raising Factor",ylab="Raising factor")
 disp.err(d$estimated.rf!=d$raising.factor,
-         c("Mac1","MacStage1","estimated.rf","raising.factor","diff"),from=d)
+         c("Mac1","Raised_MacStage1","estimated.rf","raising.factor","diff"),from=d)
 
 #/* ========================================================================*/
 #'# Horse Mackerel Stage Problems
 #/* ========================================================================*/
-#'#### Gaps in Hom1, HomStage1 and/or HomFactor data
-#'If two out of Hom1, HomStage1 and HomFactor are present, it is possible to calculate
+#'#### Gaps in Hom1, Raised_HomStage1 and/or HomFactor data
+#'If two out of Hom1, Raised_HomStage1 and HomFactor are present, it is possible to calculate
 #'the missing value. But if there are two missing, there is a problem. Ideally all
 #'should be present
-disp.err(is.na(dat$Hom1) | is.na(dat$HomStage1) | is.na(dat$HomFactor), 
-         c("Hom1","HomStage1","HomFactor"),n.max=500)
+disp.err(is.na(dat$Hom1) | is.na(dat$Raised_HomStage1) | is.na(dat$HomFactor), 
+         c("Hom1","Raised_HomStage1","HomFactor"),n.max=500)
 
-#'#### Gaps in Hom2 and/or HomStage2 data
-disp.err(is.na(dat$Hom2) | is.na(dat$HomStage2),
-         c("Hom2","HomStage2"),n.max=100)
+#'#### Gaps in Hom2 and/or Raised_HomStage2 data
+disp.err(is.na(dat$Hom2) | is.na(dat$Raised_HomStage2),
+         c("Hom2","Raised_HomStage2"),n.max=100)
 
-#'#### Gaps in Hom3 and/or HomStage3 data
-disp.err(is.na(dat$Hom3) | is.na(dat$HomStage3),
-         c("Hom3","HomStage3"),n.max=100)
+#'#### Gaps in Hom3 and/or Raised_HomStage3 data
+disp.err(is.na(dat$Hom3) | is.na(dat$Raised_HomStage3),
+         c("Hom3","Raised_HomStage3"),n.max=100)
 
-#'#### Gaps in Hom4 and/or HomStage4 data
-disp.err(is.na(dat$Hom4) | is.na(dat$HomStage4),
-         c("Hom4","HomStage4"),n.max=100)
+#'#### Gaps in Hom4 and/or Raised_HomStage4 data
+disp.err(is.na(dat$Hom4) | is.na(dat$Raised_HomStage4),
+         c("Hom4","Raised_HomStage4"),n.max=100)
 
 #'#### Distribution of Horse Mackerel Raising Factors
 plot(ecdf(dat$HomFactor),main="Cumulative Distribution of HomFactor",
@@ -258,7 +263,7 @@ plot(ecdf(dat$HomFactor),main="Cumulative Distribution of HomFactor",
 disp.range(dat$HomFactor)
 
 #'#### Horse Mackerel Raising factor is less than 1
-disp.err(dat$MacFactor<1,"MacFactor")
+disp.err(dat$HomFactor<1,"HomFactor")
 
 #/* ========================================================================*/
 #'# Environmental and Sampling Data
@@ -435,10 +440,10 @@ dat$raising.factor <- ifelse(is.na(dat$MacFactor),1,dat$MacFactor) #If missing, 
 dat$raising.factor <- ifelse(dat$raising.factor<1,    #If less than 1, its been inverted
                              1/dat$raising.factor,dat$raising.factor)
 
-dat$n.counted <- ifelse(is.na(dat$Mac1) & is.na(dat$MacStage1), #If both Mac1 and MacStage1 missing, set to zero
+dat$n.counted <- ifelse(is.na(dat$Mac1) & is.na(dat$Raised_MacStage1), #If both Mac1 and Raised_MacStage1 missing, set to zero
                         0,dat$Mac1)  
-dat$n.counted <- ifelse(is.na(dat$Mac1) & !is.na(dat$MacStage1),  #Data has been entered as raised instead
-                        dat$MacStage1/dat$raising.factor,  dat$n.counted)
+dat$n.counted <- ifelse(is.na(dat$Mac1) & !is.na(dat$Raised_MacStage1),  #Data has been entered as raised instead
+                        dat$Raised_MacStage1/dat$raising.factor,  dat$n.counted)
 
 if(any(is.na(dat$n.counted),is.na(dat$raising.factor))) {#Final check that we got all the errors in Egg counts
   stop("Egg count errors remain. Please check.")
@@ -461,26 +466,27 @@ dat$EPR.est <- dat$n.counted/dat$sampling.factor
 #/* ========================================================================*/
 #   Complete
 #/* ========================================================================*/
-#'
-#'-----------
-#+ echo=FALSE,results='asis'
 #Save results
 save(dat,file="objects//EPR_data_QA.RData")
 
+#+ echo=FALSE,results='asis'
+#Close files
 if(grepl("pdf|png|wmf",names(dev.cur()))) {dmp <- dev.off()}
 log.msg("\nAnalysis complete in %.1fs at %s.\n",proc.time()[3]-start.time,date())
 
-
-#Useage notes
-#   - This script contains and supports RMarkdown. To build it to HTML
-#     use the following commands
-#        library(knitr)
-#        opts_knit$set(root.dir=getwd())
-#        options("markdown.HTML.options"=c(getOption("markdown.HTML.options"),"toc"))
-#        spin("src//Quality_assurance.r")
-#     and open the corresponding html file e.g. in Firefox
-#   - Add markdown directly using #'
-#   - Add code chunk options directly using #+
-#
-
-
+#' -----------
+#' <small>*This work by Mark R Payne is licensed under a  Creative Commons
+#' Attribution-NonCommercial-ShareAlike 3.0 Unported License. 
+#' For details, see http://creativecommons.org/licenses/by-nc-sa/3.0/deed.en_US
+#' Basically, this means that you are free to "share" and "remix" for 
+#' non-commerical purposes as you see fit, so long as you "attribute" me for my
+#' contribution. Derivatives can be distributed under the same or 
+#' similar license.*</small>
+#'
+#' <small>*This work comes with ABSOLUTELY NO WARRANTY or support.*</small>
+#'
+#' <small>*This work is also subject to the BEER-WARE License. For details, see
+#' http://en.wikipedia.org/wiki/Beerware*</small>
+#' 
+#' -----------
+# End
